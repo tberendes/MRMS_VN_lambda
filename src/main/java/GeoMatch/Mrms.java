@@ -103,6 +103,8 @@ public class Mrms {
 		timeStr=time;
 		DateUtil date=new DateUtil(timeStr);
 		
+		# test comment
+		
 		// find sub directory with yyyyMM
 		String yyyyMM=String.format("%04d%02d", date.getYear(), date.getMonth());
 		String hhmmss=String.format("%02d%02d%02d", date.getHour(), date.getMinute(), date.getSecond());
