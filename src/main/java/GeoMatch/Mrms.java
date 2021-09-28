@@ -9,6 +9,12 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+
+import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.*;
 
 import com.javadocmd.simplelatlng.LatLng;
 import com.javadocmd.simplelatlng.LatLngTool;
@@ -18,6 +24,8 @@ import Util.DateUtil;
 
 public class Mrms {
 	
+	private static AmazonS3 s3=null;
+
 	static int MAX_2MIN_TIME_INTERVAL = 4*60*1000;  //miliseconds - 4 mins
 	static int MAX_1HR_TIME_INTERVAL = 2*3600*1000;  //miliseconds - 2 HRS
 	// define conus lat/lon bounds
@@ -87,7 +95,30 @@ public class Mrms {
 		return new DateUtil(dateStr);
 
 	}
-	public Mrms(String time, String rootDirectory, float sitelat, float sitelon, String tmpDir) throws Exception
+	public List<String> getObjectslistFromFolder(String bucketName, String folderKey) {
+   
+		ListObjectsRequest listObjectsRequest = new ListObjectsRequest()
+                                            .withBucketName(bucketName)
+                                            .withPrefix(folderKey + "/");
+  
+		List<String> keys = new ArrayList<>();
+  
+		ObjectListing objects = s3.listObjects(listObjectsRequest);
+  
+		for (;;) {
+    		List<S3ObjectSummary> summaries = objects.getObjectSummaries();
+    		if (summaries.size() < 1) {
+        		break;
+    	}
+ 
+		summaries.forEach(s -> keys.add(s.getKey()));
+		objects = s3.listNextBatchOfObjects(objects);
+		}
+  
+		return keys;
+	}
+
+	public Mrms(String time, String rootDirectory, String bucketName, AmazonS3 awsS3, float sitelat, float sitelon, String tmpDir) throws Exception
 	{
 		if (sitelat<MIN_LAT || sitelat>MAX_LAT || sitelon<MIN_LON || sitelon>MAX_LON) {
 			// set error condition and return
@@ -103,24 +134,32 @@ public class Mrms {
 		timeStr=time;
 		DateUtil date=new DateUtil(timeStr);
 		
-		# test comment
+		s3 = awsS3;
 		
+        // s3 = AmazonS3ClientBuilder.standard()
+        //         .withCredentials(new ProfileCredentialsProvider())
+        //         .build();
+
+				
 		// find sub directory with yyyyMM
 		String yyyyMM=String.format("%04d%02d", date.getYear(), date.getMonth());
 		String hhmmss=String.format("%02d%02d%02d", date.getHour(), date.getMinute(), date.getSecond());
 		
-		File dsFile = new File (rootDirectory + File.separator + yyyyMM);
-    	File [] dirListing = dsFile.listFiles();
-    	if (dirListing==null || dirListing.length==0) {  // no dates are processed
-    		System.out.println("no MRMS files to process in " + dsFile.getCanonicalPath());
-    		throw new Exception("no MRMS files to process in " + dsFile.getCanonicalPath());
+	//	File dsFile = new File (rootDirectory + File.separator + yyyyMM);
+		
+		List<String> dirListing = getObjectslistFromFolder(bucketName, rootDirectory + File.separator + yyyyMM);
+		
+    	//File [] dirListing = dsFile.listFiles();
+    	if (dirListing==null || dirListing.size()==0) {  // no dates are processed
+    		System.out.println("no MRMS files to process in " + bucketName + ":" + rootDirectory + File.separator + yyyyMM);
+    		throw new Exception("no MRMS files to process in " + bucketName + ":" + rootDirectory + File.separator + yyyyMM);
     	}
     	
 		// loop over Mrms files for given date and find files with the closest time to GPM
-    	for (int ind1=0;ind1<dirListing.length;ind1++) {
-    		// only process files, skip directories
-    		if (dirListing[ind1].exists()&&dirListing[ind1].isFile()) {
-        		String filename = dirListing[ind1].getName();
+    	for (int ind1=0;ind1<dirListing.size();ind1++) {
+    		// only process files with .gz extension
+    		if (dirListing[ind1].endsWith(".gz")) {
+        		String filename = dirListing[ind1];
 //        		System.out.println("filename "+ filename);
         		String [ ] arrStr = filename.split("\\.");
         		      
@@ -235,28 +274,52 @@ public class Mrms {
 
     	if (RQIfile!=null) {
     		//System.out.println("Reading RQI file " + RQIfile);
-    		RQIdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + RQIfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		//RQIdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + RQIfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		// download file from S3 into /tmp
+    		s3.getObject(
+                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + RQIfile),
+                new File(tmpDir+File.separator+RQIfile)
+    		);
+    		RQIdata=new MrmsData(tmpDir+File.separator+RQIfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     	}
     	else {
  			throw new Exception("Missing RQI file");	
 		}
     	if (HCFfile!=null) {
     		//System.out.println("Reading HCF file " + HCFfile);
-    		HCFdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + HCFfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		//HCFdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + HCFfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		// download file from S3 into /tmp
+    		s3.getObject(
+                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + HCFfile),
+                new File(tmpDir+File.separator+HCFfile)
+    		);
+    		HCFdata=new MrmsData(tmpDir+File.separator+HCFfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+
     	}
     	else {
  			throw new Exception("Missing HCF file");	
 		}
     	if (PRECIPRATEfile!=null) {
     		//System.out.println("Reading PRECIPRATE file " + PRECIPRATEfile);
-    		PRECIPRATEdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + PRECIPRATEfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		//PRECIPRATEdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + PRECIPRATEfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		s3.getObject(
+                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + PRECIPRATEfile),
+                new File(tmpDir+File.separator+PRECIPRATEfile)
+    		);
+    		PRECIPRATEdata=new MrmsData(tmpDir+File.separator+PRECIPRATEfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		
     	}
     	else {
  			throw new Exception("Missing PRECIPRATE file");	
 		}
     	if (MASKfile!=null) {
     		//System.out.println("Reading MASK file " + MASKfile);
-    		MASKdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + MASKfile,MrmsData.INT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		//MASKdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + MASKfile,MrmsData.INT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		s3.getObject(
+                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + MASKfile),
+                new File(tmpDir+File.separator+MASKfile)
+    		);
+    		MASKdata=new MrmsData(tmpDir+File.separator+MASKfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     	}
     	else {
  			throw new Exception("Missing MASK file");	

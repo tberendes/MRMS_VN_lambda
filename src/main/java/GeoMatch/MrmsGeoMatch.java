@@ -39,7 +39,19 @@ import ucar.nc2.NetcdfFile;
 import ucar.nc2.NetcdfFileWriter;
 import ucar.nc2.Variable;
 
-public class MrmsGeoMatch {
+import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.*;
+
+import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.S3Event;
+import com.amazonaws.services.s3.event.S3EventNotification;
+
+public class MrmsGeoMatch{
+
+	private static AmazonS3 s3=null;
 
 	static boolean TEST_MODE=false;
 	static int [] HISTOGRAM_INDICES = {-1,0,1,2,3,4,6,7,91,96,10};
@@ -55,159 +67,165 @@ public class MrmsGeoMatch {
 	String vnOutputDir;
 	String mrmsPath;
 	String tmpPath=null;
-	public MrmsGeoMatch(String InputDir, String OutputDir, String mrmsPath, String tmpPath)
+	String bucketName=null;
+	public MrmsGeoMatch(String InputDir, String OutputDir, String mrmsPath, String tmpPath, AmazonS3 s33, String bucketName)
 	{
 		this.mrmsPath = mrmsPath;
 		this.vnInputDir = InputDir;
 		this.vnOutputDir = OutputDir;
 		this.tmpPath = tmpPath;
+		this.S3 = s3;
+		this.bucketName=bucketName;
     	// initialize histogram labels
     	for (int ind1=0;ind1<HISTOGRAM_INDICES.length;ind1++)
     		maskLabels.put(HISTOGRAM_INDICES[ind1], HISTOGRAM_CODES[ind1]);
 	}
 	
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
 
-		String vnInputDir;
-		String vnOutputDir;
-		String mrmsPath;
-		String tmpPath=null;
-		boolean overwriteFlag = false;
-		
-		if (!TEST_MODE) {
-			if (args.length<3) {
-				System.out.println("Usage:  java -jar MrmsGeoMatch input_VN_directory output_VN_directory MRMS_root_directory <overwrite=true/false> <tmp=/tmpdir>");
-				System.out.println("  Matches MRMS data with GPM VN matchup files and creates new netCDF files");
-				System.exit(-1);
-			}
-			vnInputDir = args[0];
-			vnOutputDir = args[1];
-			mrmsPath = args[2];
-			
-//			if (args.length == 4) {
-//				overwriteFlag = true;
-//			}
-			if (args.length >= 4) {
-				// check for overwrite=true/false and tmp=/tmpdir
-				for (int ind1=3;ind1<args.length;ind1++) {
-					if (args[ind1].toLowerCase().contains("tmp=")) {
-						tmpPath=args[ind1].split("=")[1];
-						System.out.println("setting tmp dir to "+tmpPath);
-					}
-					if (args[ind1].toLowerCase().contains("overwrite=")) {
-						if (args[ind1].split("=")[1].equalsIgnoreCase("true")) {
-							overwriteFlag = true;							
-							System.out.println("overwriting existing output files ");
-						}
-						else {
-							overwriteFlag = false;
-							System.out.println("existing output files will be skipped ");
-						}
-					}
-				}
-			}
-		}
-		else {
-			// testing only, remove these three lines and uncomment above block
-//			vnInputDir = "C:\\Users\\tberendes\\gpmgv\\input_dir";
-//			vnOutputDir = "C:\\Users\\tberendes\\gpmgv\\output_dir";
-//			mrmsPath = "C:\\Users\\tberendes\\gpmgv\\MRMS\\level2";
-			
-			vnInputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test";
-			vnOutputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out";
-			mrmsPath = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\MRMS\\level2\\GPM";
+// 	public static void main(String[] args) {
+// 		// TODO Auto-generated method stub
 
-		}
-
-		if (vnInputDir.equals(vnOutputDir)) {
-			System.out.println("Error: output directory must be different from input directory");
-			System.exit(-1);
-		}
+// 		String vnInputDir;
+// 		String vnOutputDir;
+// 		String mrmsPath;
+// 		String tmpPath=null;
+// 		boolean overwriteFlag = false;
 		
-		File outDir = new File (vnOutputDir);
-		if (outDir.exists()&& outDir.isDirectory()) {
-			System.out.println("Output directory " + vnOutputDir + " exists");
+// 		if (!TEST_MODE) {
+// 			if (args.length<3) {
+// 				System.out.println("Usage:  java -jar MrmsGeoMatch input_VN_directory output_VN_directory MRMS_root_directory <overwrite=true/false> <tmp=/tmpdir>");
+// 				System.out.println("  Matches MRMS data with GPM VN matchup files and creates new netCDF files");
+// 				System.exit(-1);
+// 			}
+// 			vnInputDir = args[0];
+// 			vnOutputDir = args[1];
+// 			mrmsPath = args[2];
 			
-		}
-		else if (outDir.isFile()){
-			System.out.println("Error:  Output directory path " + vnOutputDir + " is a file not a directory");
-			System.exit(-1);
-		}
-		else {
-			System.out.println("Creating output directory " + vnOutputDir);		
-			outDir.mkdirs();
-		}
-		if (!outDir.exists()) {
-			System.out.println("Error: could not create output directory " + vnOutputDir);
-			System.exit(-1);
-		}
+// //			if (args.length == 4) {
+// //				overwriteFlag = true;
+// //			}
+// 			if (args.length >= 4) {
+// 				// check for overwrite=true/false and tmp=/tmpdir
+// 				for (int ind1=3;ind1<args.length;ind1++) {
+// 					if (args[ind1].toLowerCase().contains("tmp=")) {
+// 						tmpPath=args[ind1].split("=")[1];
+// 						System.out.println("setting tmp dir to "+tmpPath);
+// 					}
+// 					if (args[ind1].toLowerCase().contains("overwrite=")) {
+// 						if (args[ind1].split("=")[1].equalsIgnoreCase("true")) {
+// 							overwriteFlag = true;							
+// 							System.out.println("overwriting existing output files ");
+// 						}
+// 						else {
+// 							overwriteFlag = false;
+// 							System.out.println("existing output files will be skipped ");
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 		else {
+// 			// testing only, remove these three lines and uncomment above block
+// //			vnInputDir = "C:\\Users\\tberendes\\gpmgv\\input_dir";
+// //			vnOutputDir = "C:\\Users\\tberendes\\gpmgv\\output_dir";
+// //			mrmsPath = "C:\\Users\\tberendes\\gpmgv\\MRMS\\level2";
+			
+// 			vnInputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test";
+// 			vnOutputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out";
+// 			mrmsPath = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\MRMS\\level2\\GPM";
+
+// 		}
+
+// 		if (vnInputDir.equals(vnOutputDir)) {
+// 			System.out.println("Error: output directory must be different from input directory");
+// 			System.exit(-1);
+// 		}
 		
-		MrmsGeoMatch mrmsGeo = new MrmsGeoMatch(vnInputDir,vnOutputDir,mrmsPath,tmpPath);
+// 		File outDir = new File (vnOutputDir);
+// 		if (outDir.exists()&& outDir.isDirectory()) {
+// 			System.out.println("Output directory " + vnOutputDir + " exists");
+			
+// 		}
+// 		else if (outDir.isFile()){
+// 			System.out.println("Error:  Output directory path " + vnOutputDir + " is a file not a directory");
+// 			System.exit(-1);
+// 		}
+// 		else {
+// 			System.out.println("Creating output directory " + vnOutputDir);		
+// 			outDir.mkdirs();
+// 		}
+// 		if (!outDir.exists()) {
+// 			System.out.println("Error: could not create output directory " + vnOutputDir);
+// 			System.exit(-1);
+// 		}
+		
+// 		MrmsGeoMatch mrmsGeo = new MrmsGeoMatch(vnInputDir,vnOutputDir,mrmsPath,tmpPath);
 		
  
-		if (!TEST_MODE) {
-			mrmsGeo.processDirectory(overwriteFlag);
-		}
-		else {
-		// testing only, remove these three lines and uncomment above line
+// 		if (!TEST_MODE) {
+// 			mrmsGeo.processDirectory(overwriteFlag);
+// 		}
+// 		else {
+// 		// testing only, remove these three lines and uncomment above line
 		
-	//		String vnInputFilename = "C:\\Users\\tberendes\\gpmgv\\GPM_matchups\\GRtoDPR.KHTX.160626.13215.ITE114.DPR.NS.1_21.15dbzGRDPR_newDm.nc.gz";
-	//		String vnOutputFilename = "C:\\Users\\tberendes\\gpmgv\\GPM_matchups\\GRtoDPR.KHTX.160626.13215.ITE114.DPR.NS.1_21.15dbzGRDPR_newDm_mrms.nc";
-//			String vnInputFilename = "C:\\Users\\tberendes\\gpmgv\\MRMS\\GRtoDPR.KDOX.140907.2977.V05A.DPR.NS.1_21.nc.gz";
-//			String vnOutputFilename = "C:\\Users\\tberendes\\gpmgv\\MRMS\\GRtoDPR.KDOX.140907.2977.V05A.DPR.NS.1_21_mrms.nc.gz";
-			String vnInputFilename = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test\\GRtoDPR.KABR.200312.34295.V06A.DPR.NS.1_21.nc.gz";
-			String vnOutputFilename = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out\\GRtoDPR.KABR.200312.34295.V06A.DPR.NS.1_21.nc.gz";
-			mrmsGeo.processFile(vnInputFilename, vnOutputFilename);
-		}
+// 	//		String vnInputFilename = "C:\\Users\\tberendes\\gpmgv\\GPM_matchups\\GRtoDPR.KHTX.160626.13215.ITE114.DPR.NS.1_21.15dbzGRDPR_newDm.nc.gz";
+// 	//		String vnOutputFilename = "C:\\Users\\tberendes\\gpmgv\\GPM_matchups\\GRtoDPR.KHTX.160626.13215.ITE114.DPR.NS.1_21.15dbzGRDPR_newDm_mrms.nc";
+// //			String vnInputFilename = "C:\\Users\\tberendes\\gpmgv\\MRMS\\GRtoDPR.KDOX.140907.2977.V05A.DPR.NS.1_21.nc.gz";
+// //			String vnOutputFilename = "C:\\Users\\tberendes\\gpmgv\\MRMS\\GRtoDPR.KDOX.140907.2977.V05A.DPR.NS.1_21_mrms.nc.gz";
+// 			String vnInputFilename = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test\\GRtoDPR.KABR.200312.34295.V06A.DPR.NS.1_21.nc.gz";
+// 			String vnOutputFilename = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out\\GRtoDPR.KABR.200312.34295.V06A.DPR.NS.1_21.nc.gz";
+// 			mrmsGeo.processFile(vnInputFilename, vnOutputFilename);
+// 		}
 		
-	}
-	void processDirectory(boolean overwriteFlag)
-	{	
-		File dsFile = new File (vnInputDir);
-    	File [] dirListing = dsFile.listFiles();
-    	if (dirListing==null || dirListing.length==0) {  // no dates are processed
-    		try {
-				System.out.println("no files to process in " + dsFile.getCanonicalPath());
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-    		return;
-    	}
-		// loop over files in given directory
-    	for (int ind1=0;ind1<dirListing.length;ind1++) {
-    		// only process files, skip directories
-    		if (dirListing[ind1].exists()&&dirListing[ind1].isFile()) {
-        		String filename = dirListing[ind1].getName();
-//        		System.out.println("filename "+ filename);
-        		String [ ] arrStr = filename.split("\\.");
-        		        		
-        		// check for each file type
-    			if (filename.endsWith(".nc.gz") || filename.endsWith(".nc")) {
-    				String vnInputFilename = vnInputDir + File.separator + filename;
-    				String vnOutputFilename = vnOutputDir + File.separator + filename;
-    				
-					// check to see if file exists, and only process if it doesn't
-					File vnfile = new File (vnOutputFilename);
-					if (vnfile.exists()) {
-	    				if (overwriteFlag) {
-    						System.out.println("file " + vnOutputFilename + " exists, overwriting...");	    					
-	    					processFile(vnInputFilename, vnOutputFilename);
-	    				}
-	    				else {
-    						System.out.println("file " + vnOutputFilename + " exists, skipping...");	    					
-	    				}
-					}
-					else {
-    					processFile(vnInputFilename, vnOutputFilename);
-						
-					}
-    			}
-    		}
-    	}
+// 	}
 	
-	}
+	
+// 	void processDirectory(boolean overwriteFlag)
+// 	{	
+// 		File dsFile = new File (vnInputDir);
+//     	File [] dirListing = dsFile.listFiles();
+//     	if (dirListing==null || dirListing.length==0) {  // no dates are processed
+//     		try {
+// 				System.out.println("no files to process in " + dsFile.getCanonicalPath());
+// 			} catch (IOException e) {
+// 				// TODO Auto-generated catch block
+// 				e.printStackTrace();
+// 			}
+//     		return;
+//     	}
+// 		// loop over files in given directory
+//     	for (int ind1=0;ind1<dirListing.length;ind1++) {
+//     		// only process files, skip directories
+//     		if (dirListing[ind1].exists()&&dirListing[ind1].isFile()) {
+//         		String filename = dirListing[ind1].getName();
+// //        		System.out.println("filename "+ filename);
+//         		String [ ] arrStr = filename.split("\\.");
+        		        		
+//         		// check for each file type
+//     			if (filename.endsWith(".nc.gz") || filename.endsWith(".nc")) {
+//     				String vnInputFilename = vnInputDir + File.separator + filename;
+//     				String vnOutputFilename = vnOutputDir + File.separator + filename;
+    				
+// 					// check to see if file exists, and only process if it doesn't
+// 					File vnfile = new File (vnOutputFilename);
+// 					if (vnfile.exists()) {
+// 	    				if (overwriteFlag) {
+//     						System.out.println("file " + vnOutputFilename + " exists, overwriting...");	    					
+// 	    					processFile(vnInputFilename, vnOutputFilename);
+// 	    				}
+// 	    				else {
+//     						System.out.println("file " + vnOutputFilename + " exists, skipping...");	    					
+// 	    				}
+// 					}
+// 					else {
+//     					processFile(vnInputFilename, vnOutputFilename);
+						
+// 					}
+//     			}
+//     		}
+//     	}
+	
+// 	}
 	
 	void processFile(String vnInputFilename, String vnOutputFilename)
 	{
@@ -305,7 +323,7 @@ public class MrmsGeoMatch {
 		}
 		
 		try {
-			mrms = new Mrms(gpmTime, mrmsPath, siteLat, siteLon, tmpPath);
+			mrms = new Mrms(gpmTime, mrmsPath, bucketName, siteLat, siteLon, tmpPath, s3);
 	    	
 	    	// enter define mode 
 			mFptr.setRedefineMode(true);
@@ -736,3 +754,33 @@ public class MrmsGeoMatch {
 		
 	}
 }
+
+public class LambdaHandler implements RequestHandler<S3Event, String> {
+    @Override
+    public String handleRequest(S3Event event, Context ctx) {
+
+	    s3 = AmazonS3ClientBuilder.standard()
+	        .withCredentials(new ProfileCredentialsProvider())
+	        .build();
+	
+	    S3EventNotification.S3EventNotificationRecord record=event.getRecords().get(0);
+	     
+	    String bucketName = record.getS3().getBucket().getName();
+	    String keyName = record.getS3().getObject().getKey();
+	    System.out.println("Bucket Name is "+rbucketName);
+	    System.out.println("File Path is "+keyName);
+	     
+		String vnInputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test";
+		String vnOutputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out";
+		String mrmsPath = "mrms_mirror";
+	        
+	    // download object to /tmp and set vnOutputDir for S3 prefix
+		MrmsGeoMatch mrmsGeo = new MrmsGeoMatch(vnInputDir,vnOutputDir,mrmsPath,tmpPath, s3, bucketName);
+		
+		mrmsGeo.processFile(vnInputFilename, vnOutputFilename);
+		
+		
+	    return null;
+    }
+}
+
