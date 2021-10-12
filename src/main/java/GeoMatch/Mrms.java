@@ -154,12 +154,15 @@ public class Mrms {
     		System.out.println("no MRMS files to process in " + bucketName + ":" + rootDirectory + File.separator + yyyyMM);
     		throw new Exception("no MRMS files to process in " + bucketName + ":" + rootDirectory + File.separator + yyyyMM);
     	}
+    	else {
+    		System.out.println("first file: "+dirListing.get(0));
+    	}
     	
-		// loop over Mrms files for given date and find files with the closest time to GPM
-    	for (int ind1=0;ind1<dirListing.size();ind1++) {
+		// loop over Mrms files for given date and find files with the closest time to GPM    	
+		for (int ind1=0;ind1<dirListing.size();ind1++) {
     		// only process files with .gz extension
-    		if (dirListing[ind1].endsWith(".gz")) {
-        		String filename = dirListing[ind1];
+    		if (dirListing.get(ind1).endsWith(".gz")) {
+        		String filename = dirListing.get(ind1);
 //        		System.out.println("filename "+ filename);
         		String [ ] arrStr = filename.split("\\.");
         		      
@@ -276,11 +279,19 @@ public class Mrms {
     		//System.out.println("Reading RQI file " + RQIfile);
     		//RQIdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + RQIfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     		// download file from S3 into /tmp
-    		s3.getObject(
-                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + RQIfile),
-                new File(tmpDir+File.separator+RQIfile)
-    		);
-    		RQIdata=new MrmsData(tmpDir+File.separator+RQIfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+    		try 
+    		{
+	    		s3.getObject(
+	                new GetObjectRequest(bucketName, RQIfile),
+	                new File(tmpDir+File.separator+new File(RQIfile).getName())
+	    		);
+    		} catch (Exception e) {
+				System.out.println("cannot open RQI file "+bucketName+":"+RQIfile);
+				e.printStackTrace();
+				throw new Exception("Missing RQI file");
+			
+		    }
+    		RQIdata=new MrmsData(tmpDir+File.separator+new File(RQIfile).getName(),MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     	}
     	else {
  			throw new Exception("Missing RQI file");	
@@ -289,11 +300,19 @@ public class Mrms {
     		//System.out.println("Reading HCF file " + HCFfile);
     		//HCFdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + HCFfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     		// download file from S3 into /tmp
-    		s3.getObject(
-                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + HCFfile),
-                new File(tmpDir+File.separator+HCFfile)
-    		);
-    		HCFdata=new MrmsData(tmpDir+File.separator+HCFfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+     		try 
+    		{
+		   		s3.getObject(
+                	new GetObjectRequest(bucketName, HCFfile),
+                	new File(tmpDir+File.separator+new File(HCFfile).getName())
+    			);
+    		} catch (Exception e) {
+				System.out.println("cannot open HCF file "+bucketName+":"+ HCFfile);
+				e.printStackTrace();
+				throw new Exception("Missing HCF file");
+			
+		    }
+    		HCFdata=new MrmsData(tmpDir+File.separator+new File(HCFfile).getName(),MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
 
     	}
     	else {
@@ -302,11 +321,19 @@ public class Mrms {
     	if (PRECIPRATEfile!=null) {
     		//System.out.println("Reading PRECIPRATE file " + PRECIPRATEfile);
     		//PRECIPRATEdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + PRECIPRATEfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
-    		s3.getObject(
-                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + PRECIPRATEfile),
-                new File(tmpDir+File.separator+PRECIPRATEfile)
-    		);
-    		PRECIPRATEdata=new MrmsData(tmpDir+File.separator+PRECIPRATEfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+     		try 
+    		{
+    			s3.getObject(
+                	new GetObjectRequest(bucketName, PRECIPRATEfile),
+                	new File(tmpDir+File.separator+new File(PRECIPRATEfile).getName())
+    			);
+    		} catch (Exception e) {
+				System.out.println("cannot open PRECIPRATE file "+bucketName+":"+PRECIPRATEfile);
+				e.printStackTrace();
+				throw new Exception("Missing PRECIPRATE file");
+			
+		    }
+    		PRECIPRATEdata=new MrmsData(tmpDir+File.separator+new File(PRECIPRATEfile).getName(),MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     		
     	}
     	else {
@@ -315,11 +342,19 @@ public class Mrms {
     	if (MASKfile!=null) {
     		//System.out.println("Reading MASK file " + MASKfile);
     		//MASKdata=new MrmsData(rootDirectory + File.separator + yyyyMM + File.separator + MASKfile,MrmsData.INT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
-    		s3.getObject(
-                new GetObjectRequest(bucketName, rootDirectory + File.separator + yyyyMM + File.separator + MASKfile),
-                new File(tmpDir+File.separator+MASKfile)
-    		);
-    		MASKdata=new MrmsData(tmpDir+File.separator+MASKfile,MrmsData.FLOAT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
+     		try 
+    		{
+    			s3.getObject(
+                	new GetObjectRequest(bucketName, MASKfile),
+                	new File(tmpDir+File.separator+new File(MASKfile).getName())
+    			);
+    		} catch (Exception e) {
+				System.out.println("cannot open MASK file "+bucketName+":"+MASKfile);
+				e.printStackTrace();
+				throw new Exception("Missing MASK file");
+			
+		    }
+    		MASKdata=new MrmsData(tmpDir+File.separator+new File(MASKfile).getName(),MrmsData.INT_TYPE, MIN_LAT,MIN_LON, CELL_SIZE, tmpDir);
     	}
     	else {
  			throw new Exception("Missing MASK file");	

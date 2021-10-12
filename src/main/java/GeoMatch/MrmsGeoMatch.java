@@ -49,9 +49,9 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.S3Event;
 import com.amazonaws.services.s3.event.S3EventNotification;
 
-public class MrmsGeoMatch{
+public class MrmsGeoMatch {
 
-	private static AmazonS3 s3=null;
+	AmazonS3 s3=null;
 
 	static boolean TEST_MODE=false;
 	static int [] HISTOGRAM_INDICES = {-1,0,1,2,3,4,6,7,91,96,10};
@@ -63,19 +63,15 @@ public class MrmsGeoMatch{
 	
 	Map<Integer, String> maskLabels = new HashMap<>();
 	double DPR_FOOTPRINT = 5.2;
-	String vnInputDir;
-	String vnOutputDir;
 	String mrmsPath;
-	String tmpPath=null;
-	String bucketName=null;
-	public MrmsGeoMatch(String InputDir, String OutputDir, String mrmsPath, String tmpPath, AmazonS3 s33, String bucketName)
+	String tmpPath="/tmp";
+	String dataBucketName=null;
+	public MrmsGeoMatch(String mrmsPath, String tmpPath, AmazonS3 s3, String dataBucketName)
 	{
 		this.mrmsPath = mrmsPath;
-		this.vnInputDir = InputDir;
-		this.vnOutputDir = OutputDir;
 		this.tmpPath = tmpPath;
-		this.S3 = s3;
-		this.bucketName=bucketName;
+		this.s3 = s3;
+		this.dataBucketName=dataBucketName;
     	// initialize histogram labels
     	for (int ind1=0;ind1<HISTOGRAM_INDICES.length;ind1++)
     		maskLabels.put(HISTOGRAM_INDICES[ind1], HISTOGRAM_CODES[ind1]);
@@ -227,7 +223,7 @@ public class MrmsGeoMatch{
 	
 // 	}
 	
-	void processFile(String vnInputFilename, String vnOutputFilename)
+	String processFile(String vnInputFilename, String vnOutputFilename)
 	{
 		NetcdfFileWriter mFptr=null;
 		String gpmTime=null;
@@ -323,7 +319,7 @@ public class MrmsGeoMatch{
 		}
 		
 		try {
-			mrms = new Mrms(gpmTime, mrmsPath, bucketName, siteLat, siteLon, tmpPath, s3);
+			mrms = new Mrms(gpmTime, mrmsPath, dataBucketName, s3, siteLat, siteLon, tmpPath);
 	    	
 	    	// enter define mode 
 			mFptr.setRedefineMode(true);
@@ -531,10 +527,13 @@ public class MrmsGeoMatch{
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			if (mrms==null) {
+				System.out.println("from processFile: "+e.getMessage());
 				System.out.println("No matching MRMS data, skipping file " + vnInputFilename);
+				return null;
 			}
 			else
 				e.printStackTrace();
+				return null;
 		} finally {
 			try {
 				mFptr.close();
@@ -572,8 +571,10 @@ public class MrmsGeoMatch{
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
+				return null;
 			}
 		}		
+		return vnOutputFilename;
 		
 	}
 	Map<Integer, Integer> maskHistogram(ArrayList<Integer> value, ArrayList<Float> filter, double min, double max) {
@@ -753,34 +754,72 @@ public class MrmsGeoMatch{
 //		int count = (int) stats.getN();
 		
 	}
-}
-
-public class LambdaHandler implements RequestHandler<S3Event, String> {
-    @Override
-    public String handleRequest(S3Event event, Context ctx) {
-
-	    s3 = AmazonS3ClientBuilder.standard()
-	        .withCredentials(new ProfileCredentialsProvider())
-	        .build();
 	
-	    S3EventNotification.S3EventNotificationRecord record=event.getRecords().get(0);
+  //  @Override
+  //  public String handleRequest(S3Event event, Context ctx) {
+
+	 //   s3 = AmazonS3ClientBuilder.standard()
+	 //       .withCredentials(new ProfileCredentialsProvider())
+	 //       .build();
+	
+	 //   S3EventNotification.S3EventNotificationRecord record=event.getRecords().get(0);
 	     
-	    String bucketName = record.getS3().getBucket().getName();
-	    String keyName = record.getS3().getObject().getKey();
-	    System.out.println("Bucket Name is "+rbucketName);
-	    System.out.println("File Path is "+keyName);
+	 //   String inputBucketName = record.getS3().getBucket().getName();
+	 //   String keyName = record.getS3().getObject().getKey();
+	 //   System.out.println("Bucket Name is "+inputBucketName);
+	 //   System.out.println("File Path is "+keyName);
 	     
-		String vnInputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test";
-		String vnOutputDir = "C:\\Users\\tberendes\\vm_data\\capri_test_data\\test_out";
-		String mrmsPath = "mrms_mirror";
+		// String mrmsPath = "mrms_mirror";
+		// String dataBucketName = "capri_data";
+		// String tmpOutDir = "outdir";
+		// String mrmsGeoMatchPath = "vn_mrms_geomatch";
+		// String tmpDir = File.separator+"tmp";
+
+		// File fp = new File(keyName);
 	        
-	    // download object to /tmp and set vnOutputDir for S3 prefix
-		MrmsGeoMatch mrmsGeo = new MrmsGeoMatch(vnInputDir,vnOutputDir,mrmsPath,tmpPath, s3, bucketName);
+	 //   String filename = fp.getName();
+	 //   String basename = fp.getParent(); // includes trailing slash
+	    
+		// String vnInputFilename = tmpDir+File.separator+filename;
+
+	 //   // download object to /tmp and set outDir for S3 prefix
+		// s3.getObject(
+  //          new GetObjectRequest(inputBucketName, keyName),
+  //          new File(vnInputFilename)
+		// );
 		
-		mrmsGeo.processFile(vnInputFilename, vnOutputFilename);
+		// String outpath = tmpDir+File.separator+tmpOutDir;
+ 	// 	File outDir = new File (outpath);
+ 	// 	if (outDir.exists()&& outDir.isDirectory()) {
+ 	// 		System.out.println("Output directory " + outpath + " exists");
+		// }
+ 	// 	else if (outDir.isFile()){
+ 	// 		System.out.println("Error:  Output directory path " + outpath + " is a file not a directory");
+ 	// 		System.exit(-1);
+ 	// 	}
+ 	// 	else {
+ 	// 		System.out.println("Creating output directory " + outpath);		
+ 	// 		outDir.mkdirs();
+ 	// 	}
+ 	// 	if (!outDir.exists()) {
+ 	// 		System.out.println("Error: could not create output directory " + outpath);
+		// 	System.exit(-1);
+ 	// 	}
+
+		// // set output filename under temp directory
+		// String vnOutputFilename = outpath + File.separator + filename;
 		
+		// MrmsGeoMatch mrmsGeo = new MrmsGeoMatch(mrmsPath,tmpPath, s3, dataBucketName);
 		
-	    return null;
-    }
+		// mrmsGeo.processFile(vnInputFilename, vnOutputFilename);
+		
+		// // upload vnOutputFilename to output bucket location
+		// s3.putObject(
+  //          new PutObjectRequest(dataBucketName, mrmsGeoMatchPath+'/'+filename, new File(vnOutputFilename))
+		// );
+		
+	 //   return null;
+  //  }
 }
+
 
